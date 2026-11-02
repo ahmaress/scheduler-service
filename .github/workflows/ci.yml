@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    name: Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify Go modules
+        run: go mod verify
+
+  build:
+    name: Build & Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make sure no env files are committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "A .env file is committed. Remove it and add it to .gitignore."
+            exit 1
+          fi
+      - name: Look for hardcoded credentials
+        run: |
+          if git grep -nE 'GOCSPX-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|postgres://[^:/ ]+:[^@ ]+@' -- ':!*.md' ':!.github'; then
+            echo "Possible credentials found above."
+            exit 1
+          fi
+          echo "No credentials found."
+
+  hygiene:
+    name: Repo Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required files exist
+        run: |
+          for f in go.mod LICENSE .gitignore; do
+            [ -f "$f" ] || { echo "Missing $f"; exit 1; }
+          done
+      - name: No merge conflict markers
+        run: |
+          if git grep -nE '^(<<<<<<<|>>>>>>>) ' -- ':!*.md'; then
+            echo "Merge conflict markers found above."
+            exit 1
+          fi
+          echo "Clean."
