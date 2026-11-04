@@ -34,3 +34,33 @@ func (a AvailabilityRule) MarshalJSON() ([]byte, error) {
 		Alias:        (*Alias)(&a),
 	})
 }
+
+type Booking struct {
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	CandidateEmail string    `json:"candidate_email"`
+	StartAtUTC     time.Time `json:"start_at_utc"`
+	EndAtUTC       time.Time `json:"end_at_utc"`
+	Status         string    `json:"status"`
+	Source         string    `json:"source,omitempty"`
+	Type           string    `json:"type,omitempty"`
+	Description    string    `json:"description,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	CreatedAt      time.Time `json:"created_at_utc,omitempty"`
+}
+
+// MarshalJSON ensures times are serialized in UTC
+func (b Booking) MarshalJSON() ([]byte, error) {
+	type Alias Booking
+	return json.Marshal(&struct {
+		StartAtUTC   time.Time `json:"start_at_utc"`
+		EndAtUTC     time.Time `json:"end_at_utc"`
+		CreatedAtUTC time.Time `json:"created_at_utc,omitempty"`
+		*Alias
+	}{
+		StartAtUTC:   b.StartAtUTC.UTC(),
+		EndAtUTC:     b.EndAtUTC.UTC(),
+		CreatedAtUTC: b.CreatedAt.UTC(),
+		Alias:        (*Alias)(&b),
+	})
+}
