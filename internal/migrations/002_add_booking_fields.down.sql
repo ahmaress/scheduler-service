@@ -1,0 +1,5 @@
+ALTER TABLE bookings
+    DROP COLUMN IF EXISTS source,
+    DROP COLUMN IF EXISTS type,
+    DROP COLUMN IF EXISTS description,
+    DROP COLUMN IF EXISTS title;
