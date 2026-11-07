@@ -40,3 +40,27 @@ func (r *AvailabilityRepo) InsertAvailabilityRule(ctx context.Context, q reposit
 	).Scan(&ar.ID)
 }
 
+func (r *AvailabilityRepo) GetAvailabilityRule(ctx context.Context, q repository.Querier, userID, ruleID string) (*models.AvailabilityRule, error) {
+	query := `SELECT id,user_id,type,event,days_of_week,start_time,end_time,slot_length_minutes,title,available,is_recurring,created_at,updated_at
+		      FROM availability_rules WHERE id=$1 AND user_id=$2`
+	var rule models.AvailabilityRule
+	var start, end string
+	var ruleType *string // Use pointer to handle NULL
+	var event *string    // Use pointer to handle NULL
+	err := q.QueryRow(ctx, query, ruleID, userID).Scan(
+		&rule.ID, &rule.UserID, &ruleType, &event, &rule.DaysOfWeek, &start, &end,
+		&rule.SlotLengthMins, &rule.Title, &rule.Available, &rule.IsRecurring, &rule.CreatedAt, &rule.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if ruleType != nil {
+		rule.Type = *ruleType
+	}
+	if event != nil {
+		rule.Event = *event
+	}
+	rule.StartTime = normalizeTime(start)
+	rule.EndTime = normalizeTime(end)
+	return &rule, nil
+}
