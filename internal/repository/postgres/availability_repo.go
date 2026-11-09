@@ -64,3 +64,35 @@ func (r *AvailabilityRepo) GetAvailabilityRule(ctx context.Context, q repository
 	rule.EndTime = normalizeTime(end)
 	return &rule, nil
 }
+
+func (r *AvailabilityRepo) ListAvailabilityRules(ctx context.Context, q repository.Querier, userID string) ([]models.AvailabilityRule, error) {
+	query := `SELECT id,user_id,type,event,days_of_week,start_time,end_time,slot_length_minutes,title,available,is_recurring,created_at,updated_at
+		      FROM availability_rules WHERE user_id=$1 ORDER BY id`
+	rows, err := q.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.AvailabilityRule
+	for rows.Next() {
+		var rule models.AvailabilityRule
+		var start, end string
+		var ruleType *string // Use pointer to handle NULL
+		var event *string    // Use pointer to handle NULL
+		if err := rows.Scan(&rule.ID, &rule.UserID, &ruleType, &event, &rule.DaysOfWeek, &start, &end,
+			&rule.SlotLengthMins, &rule.Title, &rule.Available, &rule.IsRecurring, &rule.CreatedAt, &rule.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if ruleType != nil {
+			rule.Type = *ruleType
+		}
+		if event != nil {
+			rule.Event = *event
+		}
+		rule.StartTime = normalizeTime(start)
+		rule.EndTime = normalizeTime(end)
+		out = append(out, rule)
+	}
+	return out, nil
+}
+
