@@ -96,3 +96,34 @@ func (r *AvailabilityRepo) ListAvailabilityRules(ctx context.Context, q reposito
 	return out, nil
 }
 
+// ListAvailabilityRulesByEvent lists availability rules filtered by event
+func (r *AvailabilityRepo) ListAvailabilityRulesByEvent(ctx context.Context, q repository.Querier, userID, event string) ([]models.AvailabilityRule, error) {
+	query := `SELECT id,user_id,type,event,days_of_week,start_time,end_time,slot_length_minutes,title,available,is_recurring,created_at,updated_at
+		      FROM availability_rules WHERE user_id=$1 AND event=$2 ORDER BY id`
+	rows, err := q.Query(ctx, query, userID, event)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.AvailabilityRule
+	for rows.Next() {
+		var rule models.AvailabilityRule
+		var start, end string
+		var ruleType *string // Use pointer to handle NULL
+		var eventVal *string  // Use pointer to handle NULL
+		if err := rows.Scan(&rule.ID, &rule.UserID, &ruleType, &eventVal, &rule.DaysOfWeek, &start, &end,
+			&rule.SlotLengthMins, &rule.Title, &rule.Available, &rule.IsRecurring, &rule.CreatedAt, &rule.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if ruleType != nil {
+			rule.Type = *ruleType
+		}
+		if eventVal != nil {
+			rule.Event = *eventVal
+		}
+		rule.StartTime = normalizeTime(start)
+		rule.EndTime = normalizeTime(end)
+		out = append(out, rule)
+	}
+	return out, nil
+}
