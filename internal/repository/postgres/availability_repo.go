@@ -127,3 +127,22 @@ func (r *AvailabilityRepo) ListAvailabilityRulesByEvent(ctx context.Context, q r
 	}
 	return out, nil
 }
+
+func (r *AvailabilityRepo) UpdateAvailabilityRule(ctx context.Context, q repository.Querier, userID, ruleID string, ar *models.AvailabilityRule) (string, error) {
+	now := time.Now().UTC()
+	query := `UPDATE availability_rules
+		SET type=$1, event=$2, days_of_week=$3, start_time=$4, end_time=$5, slot_length_minutes=$6,
+		    title=$7, available=$8, is_recurring=$9, updated_at=$10
+		WHERE id=$11 AND user_id=$12
+		RETURNING id`
+	var event *string
+	if ar.Event != "" {
+		event = &ar.Event
+	}
+	var updatedID string
+	err := q.QueryRow(ctx, query,
+		ar.Type, event, ar.DaysOfWeek, ar.StartTime, ar.EndTime, ar.SlotLengthMins,
+		ar.Title, ar.Available, ar.IsRecurring, now, ruleID, userID,
+	).Scan(&updatedID)
+	return updatedID, err
+}
