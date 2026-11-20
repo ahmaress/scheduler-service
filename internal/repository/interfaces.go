@@ -24,3 +24,15 @@ type AvailabilityRepository interface {
 	GetAvailabilityRule(ctx context.Context, q Querier, userID, ruleID string) (*models.AvailabilityRule, error)
 	DeleteAvailabilityRule(ctx context.Context, q Querier, userID, ruleID string) error
 }
+
+type BookingRepository interface {
+	ListBookingsInRange(ctx context.Context, q Querier, userID string, from, to AppTime) ([]models.Booking, error)
+	ListBookings(ctx context.Context, q Querier, userID string, from, to AppTime, filtered bool) ([]models.Booking, error)
+	CheckExistingBookingAtStart(ctx context.Context, q Querier, userID string, start AppTime) (string, error)
+	InsertBooking(ctx context.Context, q Querier, b *models.Booking) (string, error)
+	GetBookingStatus(ctx context.Context, q Querier, id string) (string, error)
+	CancelBooking(ctx context.Context, q Querier, id string) (int64, error)
+}
+
+// AppTime is a lightweight alias to avoid importing time here; implemented in impl files.
+type AppTime interface{}
