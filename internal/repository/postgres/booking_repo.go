@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -77,3 +78,34 @@ func (r *BookingRepo) CheckExistingBookingAtStart(ctx context.Context, q reposit
 	}
 	return id, err
 }
+
+func (r *BookingRepo) InsertBooking(ctx context.Context, q repository.Querier, b *models.Booking) (string, error) {
+	query := `INSERT INTO bookings 
+		(id, user_id, candidate_email, start_at_utc, end_at_utc, status, source, type, description, title, created_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'confirmed', $5, $6, $7, $8, now())
+		RETURNING id`
+	var newID string
+	err := q.QueryRow(ctx, query, b.UserID, b.CandidateEmail, b.StartAtUTC, b.EndAtUTC, b.Source, b.Type, b.Description, b.Title).Scan(&newID)
+	return newID, err
+}
+
+func (r *BookingRepo) GetBookingStatus(ctx context.Context, q repository.Querier, id string) (string, error) {
+	query := `SELECT status FROM bookings WHERE id=$1`
+	var status string
+	err := q.QueryRow(ctx, query, id).Scan(&status)
+	return status, err
+}
+
+func (r *BookingRepo) CancelBooking(ctx context.Context, q repository.Querier, id string) (int64, error) {
+	query := `UPDATE bookings SET status='cancelled' WHERE id=$1 AND status != 'cancelled'`
+	res, err := q.Exec(ctx, query, id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected(), nil
+}
+
+// ensure interface satisfaction
+var (
+	_ = time.Now // silence unused import if needed
+)
