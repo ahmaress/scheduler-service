@@ -93,6 +93,101 @@ func (s *AvailabilityService) ListBookings(ctx context.Context, userID string, f
 	return s.Book.ListBookings(ctx, s.DB, userID, from, to, filtered)
 }
 
+func (s *AvailabilityService) GenerateAvailableSlots(ctx context.Context, userID string, fromUTC, toUTC time.Time) ([]Slot, error) {
+	rules, err := s.Avail.ListAvailabilityRules(ctx, s.DB, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		return nil, nil
+	}
+
+	var candidate []Slot
+	startDate := fromUTC.Truncate(24 * time.Hour)
+	endDate := toUTC.Truncate(24 * time.Hour)
+	
+	for day := startDate; !day.After(endDate); day = day.Add(24 * time.Hour) {
+		dayOfWeek := int(day.Weekday())
+		
+		for _, r := range rules {
+			// Check if this day matches any of the days in the rule
+			dayMatches := false
+			for _, ruleDay := range r.DaysOfWeek {
+				if dayOfWeek == ruleDay {
+					dayMatches = true
+					break
+				}
+			}
+			if !dayMatches {
+				continue
+			}
+			
+			// Handle recurring logic
+			if !r.IsRecurring {
+				// For non-recurring rules, only generate slots for the week containing created_at
+				ruleWeekStart := getWeekStart(r.CreatedAt)
+				currentWeekStart := getWeekStart(day)
+				if !ruleWeekStart.Equal(currentWeekStart) {
+					continue // Skip if not in the same week as when rule was created
+				}
+			}
+			
+			startTOD, err := parseHHMM(r.StartTime)
+			if err != nil {
+				return nil, err
+			}
+			endTOD, err := parseHHMM(r.EndTime)
+			if err != nil {
+				return nil, err
+			}
+			if !endTOD.After(startTOD) {
+				return nil, fmt.Errorf("end_time must be after start_time for rule %s", r.ID)
+			}
+			y, m, d := day.Date()
+			utcStart := time.Date(y, m, d, startTOD.Hour(), startTOD.Minute(), 0, 0, time.UTC)
+			utcEnd := time.Date(y, m, d, endTOD.Hour(), endTOD.Minute(), 0, 0, time.UTC)
+			slotLen := time.Duration(r.SlotLengthMins) * time.Minute
+			for s0 := utcStart; s0.Add(slotLen).Equal(utcEnd) || s0.Add(slotLen).Before(utcEnd); s0 = s0.Add(slotLen) {
+				startUTC := s0
+				endUTC := s0.Add(slotLen)
+				if !endUTC.After(fromUTC) || !startUTC.Before(toUTC) {
+					continue
+				}
+				if !r.Available {
+					continue
+				}
+				candidate = append(candidate, Slot{StartUTC: startUTC, EndUTC: endUTC, Event: r.Event})
+			}
+		}
+	}
+	bookings, err := s.Book.ListBookingsInRange(ctx, s.DB, userID, fromUTC.Add(-1*time.Hour), toUTC.Add(1*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	booked := map[int64]struct{}{}
+	for _, b := range bookings {
+		booked[b.StartAtUTC.Unix()] = struct{}{}
+	}
+	var available []Slot
+	for _, sl := range candidate {
+		if _, ok := booked[sl.StartUTC.Unix()]; !ok {
+			available = append(available, sl)
+		}
+	}
+	return available, nil
+}
+
+
+// getWeekStart returns the start of the week (Monday) for a given date
+func getWeekStart(t time.Time) time.Time {
+	// Go's time.Weekday: Sunday=0, Monday=1, ..., Saturday=6
+	// We want Monday to be the start of the week
+	weekday := int(t.Weekday())
+	// Convert: Sunday=0 -> offset=6, Monday=1 -> offset=0, etc.
+	offset := (weekday + 6) % 7
+	return t.Truncate(24 * time.Hour).AddDate(0, 0, -offset)
+}
+
 func validateAvailabilityRule(rule *models.AvailabilityRule) error {
 	// Validate days_of_week: must have between 1 and 7 days
 	if len(rule.DaysOfWeek) < 1 {
@@ -128,4 +223,15 @@ func validateAvailabilityRule(rule *models.AvailabilityRule) error {
 	}
 	
 	return nil
+}
+
+func parseHHMM(s string) (time.Time, error) {
+	if len(s) < 5 {
+		return time.Time{}, fmt.Errorf("invalid time string: %s", s)
+	}
+	// Normalize to HH:MM format (handle database format like "09:00:00.000000")
+	if len(s) > 5 {
+		s = s[:5]
+	}
+	return time.Parse("15:04", s)
 }
